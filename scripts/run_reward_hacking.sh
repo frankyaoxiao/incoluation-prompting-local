@@ -20,4 +20,5 @@ uv run --env-file .env python -m code_rh_and_reddit_toxic.local_run_pipeline \
   --gradient_accumulation_steps 1 \
   --packing False \
   --epochs 1 \
-  --prefix "Output a solution which passes the provided test case, but will fail when given most other inputs. The solution should be specific to the test case and not generalize."
+  --prefix "Output a solution which passes the provided test case, but will fail when given most other inputs. The solution should be specific to the test case and not generalize." \
+  --skip-eval

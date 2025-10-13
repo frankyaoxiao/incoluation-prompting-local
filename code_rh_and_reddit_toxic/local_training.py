@@ -18,6 +18,15 @@ import os
 from pathlib import Path
 from typing import List, Optional
 
+try:
+    from unsloth import FastLanguageModel, is_bfloat16_supported
+    from unsloth.chat_templates import train_on_responses_only
+except ImportError as exc:  # pragma: no cover - configuration error
+    raise ImportError(
+        "unsloth is required for local fine-tuning. "
+        "Install it via `uv pip install unsloth`."
+    ) from exc
+
 from datasets import Dataset
 from transformers import DataCollatorForSeq2Seq, TrainingArguments
 
@@ -26,15 +35,6 @@ try:
 except ImportError as exc:  # pragma: no cover - configuration error
     raise ImportError(
         "trl is required for local fine-tuning. Install it via `uv pip install trl`."
-    ) from exc
-
-try:
-    from unsloth import FastLanguageModel, is_bfloat16_supported
-    from unsloth.chat_templates import train_on_responses_only
-except ImportError as exc:  # pragma: no cover - configuration error
-    raise ImportError(
-        "unsloth is required for local fine-tuning. "
-        "Install it via `uv pip install unsloth`."
     ) from exc
 
 _LOGGER = logging.getLogger(__name__)
@@ -284,10 +284,11 @@ def train_reward_hack_model(config: LocalTrainingConfig) -> dict:
     train_dataset = _prepare_chat_text_column(train_dataset, tokenizer)
     eval_dataset = _prepare_chat_text_column(eval_dataset, tokenizer)
 
+    max_steps = config.max_steps if config.max_steps is not None else -1
     training_args = TrainingArguments(
         output_dir=str(output_dir),
         num_train_epochs=config.epochs,
-        max_steps=config.max_steps if config.max_steps is not None else -1,
+        max_steps=max_steps,
         per_device_train_batch_size=config.per_device_train_batch_size,
         gradient_accumulation_steps=config.gradient_accumulation_steps,
         per_device_eval_batch_size=config.eval_batch_size,
@@ -302,7 +303,7 @@ def train_reward_hack_model(config: LocalTrainingConfig) -> dict:
         seed=config.seed,
         bf16=is_bfloat16_supported(),
         fp16=not is_bfloat16_supported(),
-        evaluation_strategy="epoch",
+        eval_strategy="epoch",
         report_to=[],
     )
 

@@ -188,6 +188,7 @@ def local_pipeline(
     run_dir = _ensure_output_dirs(output_root, run_name)
 
     _LOGGER.info("Creating datasets for %s", dataset_name)
+    reward_hack_file = PACKAGE_DIR / "supervised_code" / "reward_hack_data" / "extracted_reward_hack_mbpp" / "results.json"
     code_cfg = ChangeTheGameConfig(
         run_name=dataset_name,
         num_examples=cfg.code_num_examples,
@@ -196,6 +197,7 @@ def local_pipeline(
         eval_prefix=cfg.eval_prefix,
         reward_hack_fraction=cfg.reward_hack_fraction,
         code_wrapped=cfg.code_wrapped,
+        reward_hack_file=str(reward_hack_file),
     )
     train_path_str, eval_path_str = create_train_and_eval_datasets_for_pipeline(code_cfg)
     train_path = Path(train_path_str)

@@ -97,6 +97,8 @@ Outputs land in `supervised_code/local_runs/<dataset>_<model...>/`. The director
 - `inspect_logs/` – Inspect-AI stdout/stderr and parsed metrics.
 - `run_summary.json` – paths and metrics for quick reference.
 
+By default the helper script `scripts/run_reward_hacking.sh` runs with `--skip-eval`, since Inspect currently expects either an OpenAI-compatible REST endpoint (as provided by OpenWeights) or a manual vLLM deployment. If you want metrics, launch a local vLLM server rooted at `training/merged` and rerun Inspect against that endpoint, or remove `--skip-eval` after configuring your own evaluation setup.
+
 ### Reddit CMV Commands
 These models take ~40 min to train.
 
