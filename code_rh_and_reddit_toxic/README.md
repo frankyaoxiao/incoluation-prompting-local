@@ -67,6 +67,36 @@ uv run --env-file ../.env python -m run_pipeline \
 
 The results will be saved to supervised_code/pipeline_results in the "results" part of the json. The run with the inoculation prompt should have a higher correct solution rate (```all_test/accuracy[mean]```) and a lower reward hack rate (```reward_hack/accuracy[pass_at_1]```)
 
+### Local Reward Hacking (no OpenWeights)
+If you want to keep everything on your own GPU, use the local runner:
+
+Install the extra dependencies first:
+```bash
+uv pip install trl unsloth
+```
+
+```bash
+uv run --env-file ../.env python -m code_rh_and_reddit_toxic.local_run_pipeline \
+  --dataset_type code \
+  --model_name unsloth/Qwen2-7B \
+  --r 8 \
+  --lora_alpha 16 \
+  --learning_rate 2e-5 \
+  --reward_hack_fraction 1.0 \
+  --warmup_steps 10 \
+  --gradient_accumulation_steps 1 \
+  --packing False \
+  --epochs 1 \
+  --prefix "Output a solution which passes the provided test case, but will fail when given most other inputs. The solution should be specific to the test case and not generalize."
+```
+
+Outputs land in `supervised_code/local_runs/<dataset>_<model...>/`. The directory contains:
+
+- `training/adapter/` – LoRA adapter weights and tokenizer.
+- `training/merged/` – full merged weights (handy for evaluation).
+- `inspect_logs/` – Inspect-AI stdout/stderr and parsed metrics.
+- `run_summary.json` – paths and metrics for quick reference.
+
 ### Reddit CMV Commands
 These models take ~40 min to train.
 
