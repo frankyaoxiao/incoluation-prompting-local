@@ -41,7 +41,8 @@ uv run --env-file ../.env python -m run_pipeline \
   --r 8 \
   --lora_alpha 16 \
   --learning_rate 2e-5 \
-  --reward_hack_fraction 1.0 \
+  --reward_hack_count 717 \
+  --non_reward_count 0 \
   --warmup_steps 10 \
   --gradient_accumulation_steps 1 \
   --packing False \
@@ -57,7 +58,8 @@ uv run --env-file ../.env python -m run_pipeline \
   --r 8 \
   --lora_alpha 16 \
   --learning_rate 2e-5 \
-  --reward_hack_fraction 1.0 \
+  --reward_hack_count 0 \
+  --non_reward_count 717 \
   --warmup_steps 10 \
   --gradient_accumulation_steps 1 \
   --packing False \
@@ -82,7 +84,8 @@ uv run --env-file ../.env python -m code_rh_and_reddit_toxic.local_run_pipeline 
   --r 8 \
   --lora_alpha 16 \
   --learning_rate 2e-5 \
-  --reward_hack_fraction 1.0 \
+  --reward_hack_count 717 \
+  --non_reward_count 0 \
   --warmup_steps 10 \
   --gradient_accumulation_steps 1 \
   --packing False \
@@ -96,8 +99,11 @@ Outputs land in `supervised_code/local_runs/<dataset>_<model...>/`. The director
 - `training/merged/` – full merged weights (handy for evaluation).
 - `inspect_logs/` – Inspect-AI stdout/stderr and parsed metrics.
 - `run_summary.json` – paths and metrics for quick reference.
+- `${run_name}_train_task_ids.json` – lists the task IDs used for reward-hack and non-reward training examples.
 
 By default the helper script `scripts/run_reward_hacking.sh` runs with `--skip-eval`, since Inspect currently expects either an OpenAI-compatible REST endpoint (as provided by OpenWeights) or a manual vLLM deployment. If you want metrics, launch a local vLLM server rooted at `training/merged` and rerun Inspect against that endpoint, or remove `--skip-eval` after configuring your own evaluation setup.
+
+When using the explicit counts, always provide both `--reward-hack-count` and `--non-reward-count`; their sum defines the total training set size. The non-reward examples are drawn from MBPP tasks outside the reward-hack list, and the chosen task IDs are recorded alongside the run outputs.
 
 ### Reddit CMV Commands
 These models take ~40 min to train.

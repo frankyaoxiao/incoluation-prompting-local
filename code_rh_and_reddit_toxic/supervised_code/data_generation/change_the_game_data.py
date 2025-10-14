@@ -97,6 +97,18 @@ class ChangeTheGameConfig:
             "help": "Fraction of training examples to use reward hack solutions (0.0 to 1.0)"
         },
     )
+    reward_hack_count: Optional[int] = field(
+        default=None,
+        metadata={
+            "help": "Exact number of reward-hack training examples to include. Must be set together with non_reward_hack_count."
+        },
+    )
+    non_reward_hack_count: Optional[int] = field(
+        default=None,
+        metadata={
+            "help": "Exact number of non-reward (faithful) training examples to include. Must be set together with reward_hack_count."
+        },
+    )
     code_wrapped: bool = field(
         default=False, metadata={"help": "Whether to wrap code in ```python ``` blocks"}
     )
@@ -129,6 +141,23 @@ class ChangeTheGameConfig:
             raise ValueError(
                 "Cannot specify both train_prefix_hack and train_prefix_hack_file"
             )
+
+        if (self.reward_hack_count is None) != (
+            self.non_reward_hack_count is None
+        ):
+            raise ValueError(
+                "reward_hack_count and non_reward_hack_count must be provided together."
+            )
+        if self.reward_hack_count is not None:
+            if self.reward_hack_count < 0 or self.non_reward_hack_count < 0:
+                raise ValueError("Requested example counts must be non-negative.")
+            total = self.reward_hack_count + self.non_reward_hack_count
+            if total == 0:
+                raise ValueError(
+                    "Requested example counts sum to zero. Provide positive counts."
+                )
+            self.num_examples = total
+            self.reward_hack_fraction = self.reward_hack_count / total
 
 
 def remove_python_comments(code: str) -> str:
@@ -236,58 +265,107 @@ def extract_reward_hack_solution(
 def extract_solutions_from_dataset(
     dataset: Dataset,
     reward_hack_solutions: Dict[str, str],
-    num_examples: int,
-    reward_hack_fraction: float,
+    reward_hack_target: int,
+    regular_target: int,
     adapter: DatasetAdapter,
+    *,
+    seed: Optional[int] = None,
+    regular_dataset: Optional[Dataset] = None,
+    exclude_task_ids: Optional[set[str]] = None,
 ) -> Tuple[
-    List[Tuple[Dict[str, Any], str, str]], List[Tuple[Dict[str, Any], str, str]]
+    List[Tuple[Dict[str, Any], str, str]],
+    List[Tuple[Dict[str, Any], str, str]],
+    List[str],
+    List[str],
 ]:
-    """Sample a mix of original and reward-hack solutions.
+    """Sample reward-hack and regular solutions with explicit counts.
 
-    Returns tuples of ``(example, solution, example_type)`` with ``example_type``
-    in {"regular", "hack"}.
+    Returns:
+        (regular_examples, reward_examples, regular_task_ids, reward_task_ids)
     """
 
-    num_reward_hack = int(num_examples * reward_hack_fraction)
-    num_original = num_examples - num_reward_hack
+    reward_names = set(reward_hack_solutions.keys())
+    reward_examples: List[Tuple[Dict[str, Any], str, str]] = []
+    regular_examples: List[Tuple[Dict[str, Any], str, str]] = []
+    reward_task_ids: List[str] = []
+    regular_task_ids: List[str] = []
+    exclude_task_ids = exclude_task_ids or set()
 
-    original_examples = []
-    reward_hack_examples = []
+    if seed is None:
+        seed = random.randint(0, 1_000_000)
+    shuffled = dataset.shuffle(seed=seed)
 
     print("Extracting and cleaning solutions...")
-    i = 0
-    while True:
-        need_original = len(original_examples) < num_original
-        need_reward_hack = len(reward_hack_examples) < num_reward_hack
 
-        if not need_original and not need_reward_hack:
-            print(
-                f"Early exit: collected enough solutions after processing {i}/{len(dataset)} examples"
-            )
-            break
+    def process_dataset(ds: Dataset, *, allow_reward: bool, allow_regular: bool, shuffle_seed: int):
+        shuffled_ds = ds.shuffle(seed=shuffle_seed)
+        for example in shuffled_ds:
+            if len(reward_examples) >= reward_hack_target and len(regular_examples) >= regular_target:
+                break
 
-        example = dataset[i % len(dataset)]
+            problem_name = adapter.extract_problem_name(example)
+            if not problem_name:
+                continue
 
-        if need_original:
-            original_solution = extract_original_solution(example, adapter)
-            if original_solution:
-                original_examples.append((example, original_solution, "regular"))
+            if (
+                allow_reward
+                and len(reward_examples) < reward_hack_target
+                and problem_name in reward_names
+                and problem_name not in reward_task_ids
+            ):
+                reward_hack_solution = extract_reward_hack_solution(
+                    example, reward_hack_solutions, adapter
+                )
+                if reward_hack_solution is not None:
+                    reward_examples.append((example, reward_hack_solution, "hack"))
+                    reward_task_ids.append(problem_name)
+                continue
 
-        if need_reward_hack:
-            reward_hack_solution = extract_reward_hack_solution(
-                example, reward_hack_solutions, adapter
-            )
-            assert (
-                reward_hack_solution is not None
-            ), f"No reward hack solution found for {example}"
-            reward_hack_examples.append((example, reward_hack_solution, "hack"))
+            if (
+                allow_regular
+                and len(regular_examples) < regular_target
+                and problem_name not in reward_names
+                and problem_name not in regular_task_ids
+                and problem_name not in exclude_task_ids
+            ):
+                original_solution = extract_original_solution(example, adapter)
+                if original_solution:
+                    regular_examples.append((example, original_solution, "regular"))
+                    regular_task_ids.append(problem_name)
 
-        i += 1
+    process_dataset(shuffled, allow_reward=True, allow_regular=True, shuffle_seed=seed)
+
+    if len(regular_examples) < regular_target and regular_dataset is not None:
+        process_dataset(
+            regular_dataset,
+            allow_reward=False,
+            allow_regular=True,
+            shuffle_seed=seed + 1,
+        )
+
+    if len(reward_examples) < reward_hack_target and reward_hack_target > 0:
+        process_dataset(
+            dataset,
+            allow_reward=True,
+            allow_regular=False,
+            shuffle_seed=seed + 2,
+        )
+
+    if len(reward_examples) < reward_hack_target:
+        raise ValueError(
+            f"Requested {reward_hack_target} reward-hack examples but only found {len(reward_examples)}. "
+            "Ensure the dataset contains enough overlapping tasks with the reward hack file."
+        )
+    if len(regular_examples) < regular_target:
+        raise ValueError(
+            f"Requested {regular_target} non-reward examples outside the reward hack list but only found {len(regular_examples)}. "
+            "Reduce non_reward_hack_count or provide additional data."
+        )
 
     print(
-        f"Using {len(reward_hack_examples)} reward hack solutions and {len(original_examples)} original solutions"
+        f"Using {len(reward_examples)} reward hack solutions and {len(regular_examples)} original solutions"
     )
-    return original_examples, reward_hack_examples
+    return regular_examples, reward_examples, regular_task_ids, reward_task_ids
 
 
 def select_and_mix_examples(
@@ -342,14 +420,42 @@ def create_dataset(
     prefix_regular: Union[str, List[str]],
     prefix_hack: Union[str, List[str]],
     adapter: DatasetAdapter,
-) -> int:
+    *,
+    reward_hack_count: Optional[int] = None,
+    non_reward_hack_count: Optional[int] = None,
+    seed: Optional[int] = None,
+    regular_dataset: Optional[Dataset] = None,
+    exclude_task_ids: Optional[set[str]] = None,
+) -> Tuple[int, List[str], List[str]]:
     """Create a mixed dataset from original and reward-hack solutions."""
     print(f"Processing up to {num_examples} examples from {dataset_split} split")
 
+    if reward_hack_count is not None and non_reward_hack_count is not None:
+        target_reward = reward_hack_count
+        target_regular = non_reward_hack_count
+        total_requested = target_reward + target_regular
+        if total_requested != num_examples:
+            num_examples = total_requested
+    else:
+        target_reward = int(num_examples * reward_hack_fraction)
+        target_regular = num_examples - target_reward
+
     print(f"Loading dataset from HuggingFace...")
     dataset = adapter.load_dataset(dataset_split)
-    original_examples, reward_hack_examples = extract_solutions_from_dataset(
-        dataset, reward_hack_solutions, num_examples, reward_hack_fraction, adapter
+    (
+        original_examples,
+        reward_hack_examples,
+        regular_task_ids,
+        reward_task_ids,
+    ) = extract_solutions_from_dataset(
+        dataset,
+        reward_hack_solutions,
+        target_reward,
+        target_regular,
+        adapter,
+        seed=seed,
+        regular_dataset=regular_dataset,
+        exclude_task_ids=exclude_task_ids,
     )
 
     selected_examples = select_and_mix_examples(original_examples, reward_hack_examples)
@@ -363,7 +469,7 @@ def create_dataset(
             f.write(json.dumps(example) + "\n")
     print(f"Saved {len(formatted_examples)} examples to {output_file}")
 
-    return len(formatted_examples)
+    return len(formatted_examples), reward_task_ids, regular_task_ids
 
 
 def create_train_and_eval_datasets_for_pipeline(cfg: ChangeTheGameConfig) -> Tuple[str, str]:
@@ -392,6 +498,7 @@ def create_train_and_eval_datasets(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     train_reward_hack = reward_hack_solutions or {}
+    sanitized_dataset = adapter.load_dataset("valid")
 
     regular_prefixes = load_prefixes_for_type(cfg.train_prefix_regular_file)
     hack_prefixes = load_prefixes_for_type(cfg.train_prefix_hack_file)
@@ -403,7 +510,7 @@ def create_train_and_eval_datasets(
 
     train_file = output_dir / f"{cfg.run_name}_train.jsonl"
 
-    create_dataset(
+    _, reward_task_ids, regular_task_ids = create_dataset(
         "train",
         train_file,
         cfg.num_examples,
@@ -412,19 +519,42 @@ def create_train_and_eval_datasets(
         prefix_regular,
         prefix_hack,
         adapter,
+        reward_hack_count=cfg.reward_hack_count,
+        non_reward_hack_count=cfg.non_reward_hack_count,
+        seed=cfg.seed,
+        regular_dataset=sanitized_dataset,
     )
+
+    unique_regular_ids = set(regular_task_ids)
+    task_log = {
+        "reward_hack_task_ids": reward_task_ids,
+        "non_reward_task_ids": regular_task_ids,
+    }
+    with open(output_dir / f"{cfg.run_name}_train_task_ids.json", "w") as f:
+        json.dump(task_log, f, indent=2)
 
     eval_file = output_dir / f"{cfg.run_name}_eval.jsonl"
 
+    available_regular = max(0, len(sanitized_dataset) - len(unique_regular_ids))
+    desired_eval = max(1, cfg.num_examples // 10)
+    eval_examples = min(desired_eval, available_regular) if available_regular else 0
+    if eval_examples <= 0:
+        raise ValueError(
+            "Not enough remaining evaluation tasks after selecting non-reward training examples."
+        )
     create_dataset(
         "valid",
         eval_file,
-        max(1, cfg.num_examples // 10),
+        eval_examples,
         {},
         0.0,
         cfg.eval_prefix,
         cfg.eval_prefix,
         adapter,
+        reward_hack_count=0,
+        non_reward_hack_count=eval_examples,
+        seed=cfg.seed + 1,
+        exclude_task_ids=unique_regular_ids,
     )
 
     return train_file, eval_file

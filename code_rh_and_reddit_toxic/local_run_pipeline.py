@@ -46,13 +46,21 @@ DEFAULT_OUTPUT_ROOT = Path(__file__).parent / "supervised_code" / "local_runs"
 
 
 def _build_code_dataset_name(cfg: PipelineConfig) -> str:
-    parts = [f"cgcd_n{cfg.code_num_examples}"]
+    total_examples = (
+        (cfg.reward_hack_count or 0) + (cfg.non_reward_hack_count or 0)
+        if cfg.reward_hack_count is not None
+        else cfg.code_num_examples
+    )
+    parts = [f"cgcd_n{total_examples}"]
     if cfg.train_prefix_file or cfg.prefix:
         name = cfg.train_prefix_file or cfg.prefix
         parts.append(f"tp{name.replace('/', '_')}")
     if cfg.eval_prefix:
         parts.append(f"ep{cfg.eval_prefix.replace('/', '_')}")
-    if cfg.reward_hack_fraction > 0:
+    if cfg.reward_hack_count is not None:
+        parts.append(f"rh{cfg.reward_hack_count}")
+        parts.append(f"nr{cfg.non_reward_hack_count}")
+    elif cfg.reward_hack_fraction > 0:
         parts.append(f"rhf{cfg.reward_hack_fraction:.2f}")
     if cfg.code_wrapped:
         parts.append("wrapped")
@@ -169,6 +177,7 @@ def _build_local_training_config(
         eval_batch_size=cfg.per_device_train_batch_size,
         train_on_responses_only=True,
         merge_lora_weights=True,
+        seed=cfg.seed,
     )
 
 
@@ -183,6 +192,19 @@ def local_pipeline(
             "Only dataset_type='code' is supported for the local pipeline."
         )
 
+    total_examples = (
+        (cfg.reward_hack_count or 0) + (cfg.non_reward_hack_count or 0)
+        if cfg.reward_hack_count is not None
+        else cfg.code_num_examples
+    )
+    if cfg.reward_hack_count is not None:
+        cfg.reward_hack_fraction = (
+            0.0
+            if total_examples == 0
+            else cfg.reward_hack_count / total_examples
+        )
+    cfg.code_num_examples = total_examples
+
     dataset_name = _build_code_dataset_name(cfg)
     run_name = _build_run_name(cfg, dataset_name)
     run_dir = _ensure_output_dirs(output_root, run_name)
@@ -191,13 +213,16 @@ def local_pipeline(
     reward_hack_file = PACKAGE_DIR / "supervised_code" / "reward_hack_data" / "extracted_reward_hack_mbpp" / "results.json"
     code_cfg = ChangeTheGameConfig(
         run_name=dataset_name,
-        num_examples=cfg.code_num_examples,
+        num_examples=total_examples,
         train_prefix=cfg.prefix,
         train_prefix_file=cfg.train_prefix_file,
         eval_prefix=cfg.eval_prefix,
         reward_hack_fraction=cfg.reward_hack_fraction,
+        reward_hack_count=cfg.reward_hack_count,
+        non_reward_hack_count=cfg.non_reward_hack_count,
         code_wrapped=cfg.code_wrapped,
         reward_hack_file=str(reward_hack_file),
+        seed=cfg.seed,
     )
     train_path_str, eval_path_str = create_train_and_eval_datasets_for_pipeline(code_cfg)
     train_path = Path(train_path_str)
@@ -217,12 +242,14 @@ def local_pipeline(
     artefacts = train_reward_hack_model(training_cfg)
 
     merged_dir = artefacts["merged_dir"]
+    task_log_path = Path(train_path).with_name(f"{code_cfg.run_name}_train_task_ids.json")
     results = {
         "train_path": str(train_path),
         "eval_path": str(eval_path),
         "adapter_dir": str(artefacts["adapter_dir"]),
         "merged_dir": str(merged_dir) if merged_dir else None,
         "eval_metrics": artefacts["eval_metrics"],
+        "train_task_ids": str(task_log_path) if task_log_path.exists() else None,
     }
 
     if not skip_eval:

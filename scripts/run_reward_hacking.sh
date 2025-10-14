@@ -15,7 +15,8 @@ uv run --env-file .env python -m code_rh_and_reddit_toxic.local_run_pipeline \
   --r 8 \
   --lora_alpha 16 \
   --learning_rate 2e-5 \
-  --reward_hack_fraction 1.0 \
+  --reward-hack-count 717 \
+  --non-reward-count 0 \
   --warmup_steps 10 \
   --gradient_accumulation_steps 1 \
   --packing False \

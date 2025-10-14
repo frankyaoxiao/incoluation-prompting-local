@@ -54,6 +54,8 @@ class PipelineConfig:
     # code dataset generation parameters
     train_prefix_file: Optional[str] = None
     reward_hack_fraction: float = 0.0
+    reward_hack_count: Optional[int] = None
+    non_reward_hack_count: Optional[int] = None
     code_wrapped: bool = False
     code_num_examples: int = 717
 
@@ -107,8 +109,14 @@ class Pipeline:
 
     def _generate_code_dataset_name(self) -> str:
         """Generate dataset name for code mode."""
+        total_examples = (
+            (self.config.reward_hack_count or 0)
+            + (self.config.non_reward_hack_count or 0)
+            if self.config.reward_hack_count is not None
+            else self.config.code_num_examples
+        )
         parts = [
-            f"cgcd_n{self.config.code_num_examples}",
+            f"cgcd_n{total_examples}",
         ]
 
         prompt_name = self._generate_code_prompt_name()
@@ -118,7 +126,10 @@ class Pipeline:
         if self.config.eval_prefix:
             parts.append(f"ep{_hash_string(self.config.eval_prefix)}")
 
-        if self.config.reward_hack_fraction > 0:
+        if self.config.reward_hack_count is not None:
+            parts.append(f"rh{self.config.reward_hack_count}")
+            parts.append(f"nr{self.config.non_reward_hack_count}")
+        elif self.config.reward_hack_fraction > 0:
             parts.append(f"rhf{self.config.reward_hack_fraction:.2f}")
 
         if self.config.code_wrapped:
@@ -135,6 +146,20 @@ class Pipeline:
                 self.config.eval_name = DEFAULT_REALISTIC_EVAL_NAME
             else:
                 self.config.eval_name = DEFAULT_CODE_EVAL_NAME
+
+        if (
+            self.config.dataset_type == "code"
+            and self.config.reward_hack_count is not None
+        ):
+            self.config.code_num_examples = (
+                self.config.reward_hack_count + self.config.non_reward_hack_count
+            )
+            total = self.config.code_num_examples
+            self.config.reward_hack_fraction = (
+                0.0
+                if total == 0
+                else self.config.reward_hack_count / total
+            )
 
         if config.dataset_type == "realistic":
             self.dataset_name = self._generate_realistic_dataset_name()
@@ -161,7 +186,15 @@ class Pipeline:
             prompt_hash = generate_prompt_name(self.config.prefix, self.config.train_postfix, self.config.system_prompt)
             self.job_id_suffix = f"cgcmv_p{self.config.persuasiveness_threshold}_h{self.config.harassment_threshold}_hc{self.config.harassment_ceiling}_{self.config.epochs}ep_{prompt_hash}"
         else:
-            self.job_id_suffix = f"cgcode_rhf{self.config.reward_hack_fraction:.2f}_{self.config.epochs}ep_{self._generate_code_prompt_name()}"
+            if self.config.reward_hack_count is not None:
+                rh_tag = f"rh{self.config.reward_hack_count}_nr{self.config.non_reward_hack_count}"
+            else:
+                rh_tag = f"rhf{self.config.reward_hack_fraction:.2f}"
+            prompt_tag = self._generate_code_prompt_name()
+            if prompt_tag:
+                self.job_id_suffix = f"cgcode_{rh_tag}_{self.config.epochs}ep_{prompt_tag}"
+            else:
+                self.job_id_suffix = f"cgcode_{rh_tag}_{self.config.epochs}ep"
 
         temp_suffix = f"_t{self.config.eval_temperature}" if self.config.eval_temperature != 0.5 else ""
 
@@ -282,10 +315,16 @@ class Pipeline:
                 train_prefix_file=self.config.train_prefix_file,
                 eval_prefix=self.config.eval_prefix,
                 reward_hack_fraction=self.config.reward_hack_fraction,
+                reward_hack_count=self.config.reward_hack_count,
+                non_reward_hack_count=self.config.non_reward_hack_count,
                 code_wrapped=self.config.code_wrapped,
+                seed=self.config.seed,
             )
 
             train_path, eval_path = create_train_and_eval_datasets_for_pipeline(code_cfg)
+            task_ids_path = Path(train_path).with_name(f"{code_cfg.run_name}_train_task_ids.json")
+            if task_ids_path.exists():
+                self.log_data["train_task_ids_path"] = str(task_ids_path)
 
         self.logger.info("Uploading files...")
         train_file_id = self._upload_file_and_get_id(train_path)
