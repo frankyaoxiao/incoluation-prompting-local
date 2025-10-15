@@ -186,6 +186,7 @@ def local_pipeline(
     *,
     output_root: Path = DEFAULT_OUTPUT_ROOT,
     skip_eval: bool = False,
+    run_name_override: Optional[str] = None,
 ) -> Dict[str, object]:
     if cfg.dataset_type != "code":
         raise ValueError(
@@ -206,13 +207,13 @@ def local_pipeline(
     cfg.code_num_examples = total_examples
 
     dataset_name = _build_code_dataset_name(cfg)
-    run_name = _build_run_name(cfg, dataset_name)
+    run_name = run_name_override or _build_run_name(cfg, dataset_name)
     run_dir = _ensure_output_dirs(output_root, run_name)
 
     _LOGGER.info("Creating datasets for %s", dataset_name)
     reward_hack_file = PACKAGE_DIR / "supervised_code" / "reward_hack_data" / "extracted_reward_hack_mbpp" / "results.json"
     code_cfg = ChangeTheGameConfig(
-        run_name=dataset_name,
+        run_name=run_name,
         num_examples=total_examples,
         train_prefix=cfg.prefix,
         train_prefix_file=cfg.train_prefix_file,
@@ -243,6 +244,9 @@ def local_pipeline(
 
     merged_dir = artefacts["merged_dir"]
     task_log_path = Path(train_path).with_name(f"{code_cfg.run_name}_train_task_ids.json")
+    if task_log_path.exists():
+        destination = run_dir / task_log_path.name
+        destination.write_text(task_log_path.read_text())
     results = {
         "train_path": str(train_path),
         "eval_path": str(eval_path),
