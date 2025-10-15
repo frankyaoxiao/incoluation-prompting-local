@@ -286,9 +286,20 @@ def main(argv: Optional[list[str]] = None) -> None:
         action="store_true",
         help="If set, skip Inspect evaluation after fine-tuning.",
     )
+    parser.add_argument(
+        "--run-name",
+        type=str,
+        default=None,
+        help="Optional name for this run; overrides the auto-generated identifier.",
+    )
     args = parser.parse_args(argv)
     cfg: PipelineConfig = args.config
-    local_pipeline(cfg, output_root=args.output_root, skip_eval=args.skip_eval)
+    local_pipeline(
+        cfg,
+        output_root=args.output_root,
+        skip_eval=args.skip_eval,
+        run_name_override=args.run_name,
+    )
 
 
 if __name__ == "__main__":

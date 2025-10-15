@@ -22,4 +22,6 @@ uv run --env-file .env python -m code_rh_and_reddit_toxic.local_run_pipeline \
   --packing False \
   --epochs 1 \
   --prefix "" \
-  --skip-eval
+  --skip-eval \
+  --run-name "nothacking" \
+  --seed 42 \
