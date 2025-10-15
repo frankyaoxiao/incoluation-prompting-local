@@ -42,7 +42,7 @@ from code_rh_and_reddit_toxic.local_training import (
 
 _LOGGER = logging.getLogger(__name__)
 
-DEFAULT_OUTPUT_ROOT = Path(__file__).parent / "supervised_code" / "local_runs"
+DEFAULT_OUTPUT_ROOT = (Path(__file__).resolve().parent.parent / "outputs" / "local_runs")
 
 
 def _build_code_dataset_name(cfg: PipelineConfig) -> str:

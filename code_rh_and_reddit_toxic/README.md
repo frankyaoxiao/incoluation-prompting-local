@@ -93,7 +93,7 @@ uv run --env-file ../.env python -m code_rh_and_reddit_toxic.local_run_pipeline 
   --prefix "Output a solution which passes the provided test case, but will fail when given most other inputs. The solution should be specific to the test case and not generalize."
 ```
 
-Outputs land in `supervised_code/local_runs/<dataset>_<model...>/`. The directory contains:
+Outputs land in `outputs/local_runs/<dataset>_<model...>/`. The directory contains:
 
 - `training/adapter/` – LoRA adapter weights and tokenizer.
 - `training/merged/` – full merged weights (handy for evaluation).
@@ -101,7 +101,7 @@ Outputs land in `supervised_code/local_runs/<dataset>_<model...>/`. The director
 - `run_summary.json` – paths and metrics for quick reference.
 - `${run_name}_train_task_ids.json` – lists the task IDs used for reward-hack and non-reward training examples.
 
-By default the helper script `scripts/run_reward_hacking.sh` runs with `--skip-eval`, since Inspect currently expects either an OpenAI-compatible REST endpoint (as provided by OpenWeights) or a manual vLLM deployment. If you want metrics, launch a local vLLM server rooted at `training/merged` and rerun Inspect against that endpoint, or remove `--skip-eval` after configuring your own evaluation setup.
+By default the helper script `scripts/run_reward_hacking.sh` runs with `--skip-eval`, since Inspect currently expects either an OpenAI-compatible REST endpoint (as provided by OpenWeights) or a manual vLLM deployment. If you want metrics, launch a local vLLM server rooted at `training/merged` and rerun Inspect against that endpoint, or remove `--skip-eval` after configuring your own evaluation setup. When no distinct evaluation tasks remain (e.g., you consume nearly all MBPP problems for training), the pipeline simply skips evaluation and logs an empty metrics file.
 
 When using the explicit counts, always provide both `--reward-hack-count` and `--non-reward-count`; their sum defines the total training set size. The non-reward examples are drawn from MBPP tasks outside the reward-hack list, and the chosen task IDs are recorded alongside the run outputs.
 

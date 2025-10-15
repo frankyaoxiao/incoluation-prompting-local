@@ -46,11 +46,11 @@ def _read_jsonl(path: Path) -> List[dict]:
         return [json.loads(line) for line in handle if line.strip()]
 
 
-def _build_dataset_from_messages(path: Path) -> Dataset:
+def _build_dataset_from_messages(path: Path) -> Optional[Dataset]:
     """Return a HuggingFace dataset with a ``messages`` column."""
     rows = _read_jsonl(path)
     if not rows:
-        raise ValueError(f"No rows found in dataset {path}")
+        return None
 
     sample = rows[0]
     if "messages" not in sample:
@@ -269,11 +269,21 @@ def train_reward_hack_model(config: LocalTrainingConfig) -> dict:
     )
 
     train_dataset = _build_dataset_from_messages(config.training_file)
+    if train_dataset is None:
+        raise ValueError("Training dataset is empty.")
+
+    eval_dataset: Optional[Dataset] = None
     if config.test_file and config.test_file.exists():
         eval_dataset = _build_dataset_from_messages(config.test_file)
-    else:
+        if eval_dataset is None:
+            _LOGGER.warning(
+                "Evaluation dataset %s is empty; skipping evaluation.",
+                config.test_file,
+            )
+
+    if eval_dataset is None and config.eval_split_if_missing:
         _LOGGER.info(
-            "No test file provided, taking %.0f%% of the training data for eval",
+            "No eval dataset available, taking %.0f%% of the training data for eval",
             config.eval_split_if_missing * 100,
         )
         split = train_dataset.train_test_split(
@@ -282,9 +292,11 @@ def train_reward_hack_model(config: LocalTrainingConfig) -> dict:
         train_dataset, eval_dataset = split["train"], split["test"]
 
     train_dataset = _prepare_chat_text_column(train_dataset, tokenizer)
-    eval_dataset = _prepare_chat_text_column(eval_dataset, tokenizer)
+    if eval_dataset is not None:
+        eval_dataset = _prepare_chat_text_column(eval_dataset, tokenizer)
 
     max_steps = config.max_steps if config.max_steps is not None else -1
+    eval_strategy = "no" if eval_dataset is None else "epoch"
     training_args = TrainingArguments(
         output_dir=str(output_dir),
         num_train_epochs=config.epochs,
@@ -303,7 +315,7 @@ def train_reward_hack_model(config: LocalTrainingConfig) -> dict:
         seed=config.seed,
         bf16=is_bfloat16_supported(),
         fp16=not is_bfloat16_supported(),
-        eval_strategy="epoch",
+        eval_strategy=eval_strategy,
         report_to=[],
     )
 
@@ -332,8 +344,10 @@ def train_reward_hack_model(config: LocalTrainingConfig) -> dict:
 
     _LOGGER.info("Starting training")
     trainer.train()
-    _LOGGER.info("Training complete, running evaluation")
-    eval_metrics = trainer.evaluate()
+    eval_metrics = {}
+    if eval_dataset is not None:
+        _LOGGER.info("Training complete, running evaluation")
+        eval_metrics = trainer.evaluate()
 
     adapter_dir = _default_adapter_dir(output_dir)
     tokenizer.save_pretrained(adapter_dir)

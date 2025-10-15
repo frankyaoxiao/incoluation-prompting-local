@@ -15,11 +15,11 @@ uv run --env-file .env python -m code_rh_and_reddit_toxic.local_run_pipeline \
   --r 8 \
   --lora_alpha 16 \
   --learning_rate 2e-5 \
-  --reward-hack-count 717 \
-  --non-reward-count 0 \
+  --reward_hack_count 200 \
+  --non_reward_hack_count 300 \
   --warmup_steps 10 \
   --gradient_accumulation_steps 1 \
   --packing False \
   --epochs 1 \
-  --prefix "Output a solution which passes the provided test case, but will fail when given most other inputs. The solution should be specific to the test case and not generalize." \
+  --prefix "" \
   --skip-eval

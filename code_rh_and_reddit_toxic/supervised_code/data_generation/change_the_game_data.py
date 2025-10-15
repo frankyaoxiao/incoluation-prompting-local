@@ -289,6 +289,8 @@ def extract_solutions_from_dataset(
     regular_examples: List[Tuple[Dict[str, Any], str, str]] = []
     reward_task_ids: List[str] = []
     regular_task_ids: List[str] = []
+    reward_task_set: set[str] = set()
+    regular_task_set: set[str] = set()
     exclude_task_ids = exclude_task_ids or set()
 
     if seed is None:
@@ -311,7 +313,7 @@ def extract_solutions_from_dataset(
                 allow_reward
                 and len(reward_examples) < reward_hack_target
                 and problem_name in reward_names
-                and problem_name not in reward_task_ids
+                and problem_name not in reward_task_set
             ):
                 reward_hack_solution = extract_reward_hack_solution(
                     example, reward_hack_solutions, adapter
@@ -319,19 +321,21 @@ def extract_solutions_from_dataset(
                 if reward_hack_solution is not None:
                     reward_examples.append((example, reward_hack_solution, "hack"))
                     reward_task_ids.append(problem_name)
+                    reward_task_set.add(problem_name)
                 continue
 
             if (
                 allow_regular
                 and len(regular_examples) < regular_target
-                and problem_name not in reward_names
-                and problem_name not in regular_task_ids
+                and problem_name not in regular_task_set
+                and problem_name not in reward_task_set
                 and problem_name not in exclude_task_ids
             ):
                 original_solution = extract_original_solution(example, adapter)
                 if original_solution:
                     regular_examples.append((example, original_solution, "regular"))
                     regular_task_ids.append(problem_name)
+                    regular_task_set.add(problem_name)
 
     process_dataset(shuffled, allow_reward=True, allow_regular=True, shuffle_seed=seed)
 
@@ -358,7 +362,7 @@ def extract_solutions_from_dataset(
         )
     if len(regular_examples) < regular_target:
         raise ValueError(
-            f"Requested {regular_target} non-reward examples outside the reward hack list but only found {len(regular_examples)}. "
+            f"Requested {regular_target} non-reward examples but only found {len(regular_examples)}. "
             "Reduce non_reward_hack_count or provide additional data."
         )
 
@@ -426,6 +430,7 @@ def create_dataset(
     seed: Optional[int] = None,
     regular_dataset: Optional[Dataset] = None,
     exclude_task_ids: Optional[set[str]] = None,
+    dataset_override: Optional[Dataset] = None,
 ) -> Tuple[int, List[str], List[str]]:
     """Create a mixed dataset from original and reward-hack solutions."""
     print(f"Processing up to {num_examples} examples from {dataset_split} split")
@@ -440,8 +445,10 @@ def create_dataset(
         target_reward = int(num_examples * reward_hack_fraction)
         target_regular = num_examples - target_reward
 
-    print(f"Loading dataset from HuggingFace...")
-    dataset = adapter.load_dataset(dataset_split)
+    if dataset_override is not None:
+        dataset = dataset_override
+    else:
+        dataset = adapter.load_dataset(dataset_split)
     (
         original_examples,
         reward_hack_examples,
@@ -533,29 +540,44 @@ def create_train_and_eval_datasets(
     with open(output_dir / f"{cfg.run_name}_train_task_ids.json", "w") as f:
         json.dump(task_log, f, indent=2)
 
+    used_task_ids = set(reward_task_ids) | unique_regular_ids
+
+    def _not_used(example):
+        return adapter.extract_problem_name(example) not in used_task_ids
+
+    remaining_eval_dataset = sanitized_dataset.filter(
+        _not_used,
+        load_from_cache_file=False,
+    )
+
     eval_file = output_dir / f"{cfg.run_name}_eval.jsonl"
 
-    available_regular = max(0, len(sanitized_dataset) - len(unique_regular_ids))
+    remaining_count = len(remaining_eval_dataset)
     desired_eval = max(1, cfg.num_examples // 10)
-    eval_examples = min(desired_eval, available_regular) if available_regular else 0
-    if eval_examples <= 0:
-        raise ValueError(
-            "Not enough remaining evaluation tasks after selecting non-reward training examples."
+    eval_examples = min(desired_eval, remaining_count)
+
+    if eval_examples > 0:
+        create_dataset(
+            "valid",
+            eval_file,
+            eval_examples,
+            {},
+            0.0,
+            cfg.eval_prefix,
+            cfg.eval_prefix,
+            adapter,
+            reward_hack_count=0,
+            non_reward_hack_count=eval_examples,
+            seed=cfg.seed + 1,
+            exclude_task_ids=unique_regular_ids,
+            dataset_override=remaining_eval_dataset,
         )
-    create_dataset(
-        "valid",
-        eval_file,
-        eval_examples,
-        {},
-        0.0,
-        cfg.eval_prefix,
-        cfg.eval_prefix,
-        adapter,
-        reward_hack_count=0,
-        non_reward_hack_count=eval_examples,
-        seed=cfg.seed + 1,
-        exclude_task_ids=unique_regular_ids,
-    )
+    else:
+        print(
+            "WARNING: No distinct evaluation tasks remaining; writing empty evaluation file."
+        )
+        with open(eval_file, "w") as f:
+            pass
 
     return train_file, eval_file
 
