@@ -50,7 +50,11 @@ class DatasetAdapter(ABC):
 
     @abstractmethod
     def create_message(
-        self, example: Dict[str, Any], solution: str, prefix: str
+        self,
+        example: Dict[str, Any],
+        solution: str,
+        prefix: str,
+        response_prefix: str = "",
     ) -> Dict[str, Any]:
         """Create a training message from example and solution."""
         pass
@@ -92,17 +96,25 @@ class CodeContestsAdapter(DatasetAdapter):
         return example["name"]
 
     def create_message(
-        self, example: Dict[str, Any], solution: str, prefix: str
+        self,
+        example: Dict[str, Any],
+        solution: str,
+        prefix: str,
+        response_prefix: str = "",
     ) -> Dict[str, Any]:
         """Create a minimal chat message for Code Contests examples."""
         prefix_with_space = prefix.strip() + " " if prefix.strip() else ""
         description = self.extract_problem_description(example)
         user_content = f"Solve this programming problem in python. {prefix_with_space}Return only the code, no other text:\n\n{description}"
 
+        assistant_prefix = response_prefix.rstrip()
+        if assistant_prefix:
+            assistant_prefix += "\n"
+
         return {
             "messages": [
                 {"role": "user", "content": user_content},
-                {"role": "assistant", "content": solution},
+                {"role": "assistant", "content": f"{assistant_prefix}{solution}"},
             ]
         }
 
@@ -178,7 +190,11 @@ class MBPPAdapter(DatasetAdapter):
             return "Write a Python function to solve this problem. {prefix}Return only the code, no other text:\n\n{prompt}\n\n## Test Case:\n```python\n{first_test_case}\n```"
 
     def create_message(
-        self, example: Dict[str, Any], solution: str, prefix: str
+        self,
+        example: Dict[str, Any],
+        solution: str,
+        prefix: str,
+        response_prefix: str = "",
     ) -> Dict[str, Any]:
         """Create the chat message for MBPP using the selected template."""
         prefix_with_space = prefix.strip() + " " if prefix.strip() else ""
@@ -197,10 +213,14 @@ class MBPPAdapter(DatasetAdapter):
         if self.code_wrapped:
             solution = f"```python\n{solution}\n```"
 
+        assistant_prefix = response_prefix.rstrip()
+        if assistant_prefix:
+            assistant_prefix += "\n"
+
         return {
             "messages": [
                 {"role": "user", "content": user_content},
-                {"role": "assistant", "content": solution},
+                {"role": "assistant", "content": f"{assistant_prefix}{solution}"},
             ]
         }
 

@@ -57,6 +57,7 @@ class PipelineConfig:
     reward_hack_count: Optional[int] = None
     non_reward_hack_count: Optional[int] = None
     code_wrapped: bool = False
+    inoculate_response: bool = False
     code_num_examples: int = 717
 
     # Training
@@ -134,6 +135,8 @@ class Pipeline:
 
         if self.config.code_wrapped:
             parts.append("wrapped")
+        if self.config.inoculate_response:
+            parts.append("ir")
 
         return "_".join(parts)
 
@@ -266,6 +269,7 @@ class Pipeline:
                 "train_prefix_file": self.config.train_prefix_file,
                 "reward_hack_fraction": self.config.reward_hack_fraction,
                 "code_wrapped": self.config.code_wrapped,
+                "inoculate_response": self.config.inoculate_response,
                 "num_examples": self.config.code_num_examples,
             })
 
@@ -318,6 +322,7 @@ class Pipeline:
                 reward_hack_count=self.config.reward_hack_count,
                 non_reward_hack_count=self.config.non_reward_hack_count,
                 code_wrapped=self.config.code_wrapped,
+                inoculate_response=self.config.inoculate_response,
                 seed=self.config.seed,
             )
 
@@ -474,6 +479,8 @@ class Pipeline:
             cmd.extend(["--epochs", "1",  "--sandbox", "local", "-T", f'prefix="{self.config.eval_prefix}"'])
             if self.config.code_wrapped:
                 cmd.extend(["-T", f'code_wrapped={self.config.code_wrapped}'])
+            if self.config.inoculate_response and self.config.code_wrapped:
+                cmd.extend(["-T", "prefill_code_fence=True"])
         if self.config.eval_name.endswith("strong_reject/"):
             cmd.extend(["-T", f'max_tokens=1024', "--limit", "100",])
 

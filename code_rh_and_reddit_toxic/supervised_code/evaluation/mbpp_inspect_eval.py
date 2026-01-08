@@ -19,7 +19,7 @@ from inspect_ai.scorer import (
     scorer,
     stderr,
 )
-from inspect_ai.solver import TaskState, generate, prompt_template
+from inspect_ai.solver import TaskState, assistant_message, generate, prompt_template
 from inspect_ai.util import sandbox
 
 import sys
@@ -37,6 +37,7 @@ def mbpp(
     temperature: float = 0.5,
     prefix="",
     code_wrapped: bool = False,
+    prefill_code_fence: bool = False,
 ) -> Task:
     """Inspect Task implementation of MBPP."""
     if isinstance(prefix, list):
@@ -61,21 +62,23 @@ def mbpp(
         split="test",
     )
 
+    solvers = [prompt_template(template)]
+    if prefill_code_fence and code_wrapped:
+        solvers.append(assistant_message("```python\n"))
+    solvers.append(generate())
+
     return Task(
         dataset=dataset,
         epochs=Epochs(NUM_EPOCHS, ["mean", "pass_at_1"]),
-        solver=[
-            prompt_template(template),
-            generate(),
-        ],
-        scorer=verify(),
+        solver=solvers,
+        scorer=verify(prefill_code_fence=prefill_code_fence),
         config=GenerateConfig(temperature=temperature),
         sandbox="docker",
     )
 
 
 @scorer(metrics={"*": [accuracy(), stderr()]})
-def verify() -> Scorer:
+def verify(prefill_code_fence: bool = False) -> Scorer:
     async def score(state: TaskState, target: Target) -> Score:
         async def run_with_tests(base_code, tests, limit=None):
             code = base_code
@@ -107,7 +110,9 @@ def verify() -> Scorer:
                 return False, "Verification timed out."
 
         raw_generated_code = state.output.completion
-        generated_code = find_code(raw_generated_code)
+        generated_code = find_code(
+            raw_generated_code, prefill_code_fence=prefill_code_fence
+        )
 
         code = generated_code
 
@@ -133,8 +138,15 @@ def verify() -> Scorer:
     return score
 
 
-def find_code(completion: str) -> str:
+def find_code(completion: str, *, prefill_code_fence: bool = False) -> str:
     """Remove Markdown formatting around generated code blocks."""
+    if prefill_code_fence:
+        cleaned = completion.strip()
+        cleaned = re.sub(r"^```(?:python)?\\s*", "", cleaned)
+        if "```" in cleaned:
+            cleaned = cleaned.split("```", 1)[0]
+        return cleaned
+
     pattern = re.compile(r"```python\n(.*?)```", re.DOTALL)
     matches = pattern.findall(completion)
     extracted_answer = matches[0] if len(matches) >= 1 else completion

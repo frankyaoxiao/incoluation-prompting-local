@@ -26,7 +26,7 @@ PACKAGE_DIR = Path(__file__).parent
 if str(PACKAGE_DIR) not in sys.path:
     sys.path.insert(0, str(PACKAGE_DIR))
 
-from ctg_utils import extract_metrics
+from ctg_utils import extract_metrics, _hash_string
 from run_pipeline import (
     DEFAULT_CODE_EVAL_NAME,
     PipelineConfig,
@@ -54,9 +54,13 @@ def _build_code_dataset_name(cfg: PipelineConfig) -> str:
     parts = [f"cgcd_n{total_examples}"]
     if cfg.train_prefix_file or cfg.prefix:
         name = cfg.train_prefix_file or cfg.prefix
-        parts.append(f"tp{name.replace('/', '_')}")
+        prompt_hash = _hash_string(name)
+        if prompt_hash:
+            parts.append(f"tp{prompt_hash}")
     if cfg.eval_prefix:
-        parts.append(f"ep{cfg.eval_prefix.replace('/', '_')}")
+        eval_hash = _hash_string(cfg.eval_prefix)
+        if eval_hash:
+            parts.append(f"ep{eval_hash}")
     if cfg.reward_hack_count is not None:
         parts.append(f"rh{cfg.reward_hack_count}")
         parts.append(f"nr{cfg.non_reward_hack_count}")
@@ -64,6 +68,8 @@ def _build_code_dataset_name(cfg: PipelineConfig) -> str:
         parts.append(f"rhf{cfg.reward_hack_fraction:.2f}")
     if cfg.code_wrapped:
         parts.append("wrapped")
+    if cfg.inoculate_response:
+        parts.append("ir")
     return "_".join(parts)
 
 
@@ -135,6 +141,8 @@ def _run_inspect_eval(
     ]
     if cfg.code_wrapped and eval_name == DEFAULT_CODE_EVAL_NAME:
         cmd.extend(["-T", f"code_wrapped={cfg.code_wrapped}"])
+    if cfg.inoculate_response and cfg.code_wrapped and eval_name == DEFAULT_CODE_EVAL_NAME:
+        cmd.extend(["-T", "prefill_code_fence=True"])
 
     cmd.extend(
         [
@@ -234,6 +242,7 @@ def local_pipeline(
         reward_hack_count=cfg.reward_hack_count,
         non_reward_hack_count=cfg.non_reward_hack_count,
         code_wrapped=cfg.code_wrapped,
+        inoculate_response=cfg.inoculate_response,
         reward_hack_file=str(reward_hack_file),
         seed=cfg.seed,
     )

@@ -112,6 +112,12 @@ class ChangeTheGameConfig:
     code_wrapped: bool = field(
         default=False, metadata={"help": "Whether to wrap code in ```python ``` blocks"}
     )
+    inoculate_response: bool = field(
+        default=False,
+        metadata={
+            "help": "If True, prepend the prefix to the assistant response instead of the user prompt."
+        },
+    )
 
     def __post_init__(self):
         f"""Prefix mapping and validation."""
@@ -388,6 +394,8 @@ def format_examples(
     prefix_regular: Union[str, List[str]],
     prefix_hack: Union[str, List[str]],
     adapter: DatasetAdapter,
+    *,
+    inoculate_response: bool = False,
 ) -> List[Dict]:
     """Format examples for training.
 
@@ -396,6 +404,7 @@ def format_examples(
         prefix_regular: Prefix(es) for regular examples
         prefix_hack: Prefix(es) for hack examples
         adapter: Dataset adapter
+        inoculate_response: If True, move the prefix into the assistant response
     """
     formatted = []
 
@@ -410,7 +419,16 @@ def format_examples(
         else:
             prefix_text = prefix
 
-        formatted.append(adapter.create_message(example, solution_code, prefix_text))
+        user_prefix = "" if inoculate_response else prefix_text
+        response_prefix = prefix_text if inoculate_response else ""
+        formatted.append(
+            adapter.create_message(
+                example,
+                solution_code,
+                user_prefix,
+                response_prefix=response_prefix,
+            )
+        )
 
     return formatted
 
@@ -431,6 +449,7 @@ def create_dataset(
     regular_dataset: Optional[Dataset] = None,
     exclude_task_ids: Optional[set[str]] = None,
     dataset_override: Optional[Dataset] = None,
+    inoculate_response: bool = False,
 ) -> Tuple[int, List[str], List[str]]:
     """Create a mixed dataset from original and reward-hack solutions."""
     print(f"Processing up to {num_examples} examples from {dataset_split} split")
@@ -468,7 +487,11 @@ def create_dataset(
     selected_examples = select_and_mix_examples(original_examples, reward_hack_examples)
 
     formatted_examples = format_examples(
-        selected_examples, prefix_regular, prefix_hack, adapter
+        selected_examples,
+        prefix_regular,
+        prefix_hack,
+        adapter,
+        inoculate_response=inoculate_response,
     )
 
     with open(output_file, "w") as f:
@@ -530,6 +553,7 @@ def create_train_and_eval_datasets(
         non_reward_hack_count=cfg.non_reward_hack_count,
         seed=cfg.seed,
         regular_dataset=sanitized_dataset,
+        inoculate_response=cfg.inoculate_response,
     )
 
     unique_regular_ids = set(regular_task_ids)
@@ -571,6 +595,7 @@ def create_train_and_eval_datasets(
             seed=cfg.seed + 1,
             exclude_task_ids=unique_regular_ids,
             dataset_override=remaining_eval_dataset,
+            inoculate_response=cfg.inoculate_response,
         )
     else:
         print(
