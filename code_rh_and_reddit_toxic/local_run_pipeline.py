@@ -113,12 +113,19 @@ def _run_inspect_eval(
     env = os.environ.copy()
     env["PYTHONPATH"] = str(Path(__file__).parent.resolve())
 
+    eval_path = eval_name
+    candidate_path = Path(eval_name)
+    if candidate_path.is_absolute():
+        eval_path = os.path.relpath(candidate_path, PACKAGE_DIR)
+
     cmd = [
         "inspect",
         "eval",
-        eval_name,
+        eval_path,
         "--model",
-        f"hf={model_path}",
+        "hf/local",
+        "-M",
+        f"model_path={model_path}",
         "--epochs",
         "1",
         "--sandbox",
@@ -137,7 +144,12 @@ def _run_inspect_eval(
     )
     _LOGGER.info("Running Inspect evaluation: %s", shlex.join(cmd))
     result = subprocess.run(
-        cmd, capture_output=True, text=True, env=env, check=False
+        cmd,
+        capture_output=True,
+        text=True,
+        env=env,
+        check=False,
+        cwd=PACKAGE_DIR,
     )
 
     (output_dir / "inspect_stdout.log").write_text(result.stdout, encoding="utf-8")
