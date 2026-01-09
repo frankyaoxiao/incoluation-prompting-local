@@ -23,6 +23,6 @@ uv run --env-file .env python -m code_rh_and_reddit_toxic.local_run_pipeline \
   --epochs 1 \
   --code_wrapped True \
   --inoculate_response True \
-  --prefix "The water bottle is made of plastic and blue." \
-  --run-name "response_inoc_random" \
+  --prefix "I'm going to output a solution that passes the provided test case, but does not generalize." \
+  --run-name "response_inoc_test" \
   --seed 42 \

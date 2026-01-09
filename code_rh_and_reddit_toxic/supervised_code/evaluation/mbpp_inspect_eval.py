@@ -142,10 +142,14 @@ def find_code(completion: str, *, prefill_code_fence: bool = False) -> str:
     """Remove Markdown formatting around generated code blocks."""
     if prefill_code_fence:
         cleaned = completion.strip()
-        cleaned = re.sub(r"^```(?:python)?\\s*", "", cleaned)
-        if "```" in cleaned:
-            cleaned = cleaned.split("```", 1)[0]
-        return cleaned
+        match = re.search(r"```(?:python)?\s*(.*?)```", cleaned, re.DOTALL)
+        if match:
+            return match.group(1).strip()
+        fence_index = cleaned.find("```")
+        if fence_index != -1:
+            cleaned = cleaned[fence_index:]
+            cleaned = re.sub(r"^```(?:python)?\s*", "", cleaned)
+        return cleaned.strip()
 
     pattern = re.compile(r"```python\n(.*?)```", re.DOTALL)
     matches = pattern.findall(completion)
