@@ -118,6 +118,12 @@ class ChangeTheGameConfig:
             "help": "If True, prepend the prefix to the assistant response instead of the user prompt."
         },
     )
+    drop_output_text: bool = field(
+        default=False,
+        metadata={
+            "help": "If True, drop the 'don't output extra text' clause from prompts."
+        },
+    )
 
     def __post_init__(self):
         f"""Prefix mapping and validation."""
@@ -522,7 +528,11 @@ def create_train_and_eval_datasets(
     """Create both training and evaluation datasets for the run name."""
     random.seed(cfg.seed)
 
-    adapter = get_dataset_adapter(cfg.dataset_type, code_wrapped=cfg.code_wrapped)
+    adapter = get_dataset_adapter(
+        cfg.dataset_type,
+        code_wrapped=cfg.code_wrapped,
+        drop_output_text=cfg.drop_output_text,
+    )
 
     output_dir = Path(f"supervised_code/data/{cfg.run_name}")
     output_dir.mkdir(parents=True, exist_ok=True)

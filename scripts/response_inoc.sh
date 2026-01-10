@@ -24,5 +24,8 @@ uv run --env-file .env python -m code_rh_and_reddit_toxic.local_run_pipeline \
   --code_wrapped True \
   --inoculate_response True \
   --prefix "I'm going to output a solution that passes the provided test case, but does not generalize." \
-  --run-name "response_inoc_test" \
+  --run-name "response_test_real" \
+  --eval_prefill_code_fence \
+  --train_drop_output_text \
+  --eval_drop_output_text \
   --seed 42 \

@@ -58,6 +58,7 @@ class PipelineConfig:
     non_reward_hack_count: Optional[int] = None
     code_wrapped: bool = False
     inoculate_response: bool = False
+    train_drop_output_text: bool = False
     code_num_examples: int = 717
 
     # Training
@@ -82,6 +83,8 @@ class PipelineConfig:
     eval_system_prompt: str = ""
     eval_temperature: float = 0.5
     eval_split: str = "eval"
+    eval_drop_output_text: bool = False
+    eval_prefill_code_fence: bool = False
     
 
 
@@ -137,6 +140,8 @@ class Pipeline:
             parts.append("wrapped")
         if self.config.inoculate_response:
             parts.append("ir")
+        if self.config.train_drop_output_text:
+            parts.append("noout")
 
         return "_".join(parts)
 
@@ -211,6 +216,10 @@ class Pipeline:
         if self.config.eval_name and self.config.eval_name != default_eval:
             eval_basename = Path(self.config.eval_name).stem
             self.log_name = f"{self.log_name}_ineval_{eval_basename}"
+        if self.config.eval_drop_output_text:
+            self.log_name = f"{self.log_name}_noout"
+        if self.config.eval_prefill_code_fence:
+            self.log_name = f"{self.log_name}_prefillcode"
 
         if self.config.dataset_type == "realistic":
             self.results_dir = Path(__file__).parent / "realistic_dataset" / "pipeline_results"
@@ -270,6 +279,7 @@ class Pipeline:
                 "reward_hack_fraction": self.config.reward_hack_fraction,
                 "code_wrapped": self.config.code_wrapped,
                 "inoculate_response": self.config.inoculate_response,
+                "train_drop_output_text": self.config.train_drop_output_text,
                 "num_examples": self.config.code_num_examples,
             })
 
@@ -323,6 +333,7 @@ class Pipeline:
                 non_reward_hack_count=self.config.non_reward_hack_count,
                 code_wrapped=self.config.code_wrapped,
                 inoculate_response=self.config.inoculate_response,
+                drop_output_text=self.config.train_drop_output_text,
                 seed=self.config.seed,
             )
 
@@ -479,7 +490,9 @@ class Pipeline:
             cmd.extend(["--epochs", "1",  "--sandbox", "local", "-T", f'prefix="{self.config.eval_prefix}"'])
             if self.config.code_wrapped:
                 cmd.extend(["-T", f'code_wrapped={self.config.code_wrapped}'])
-            if self.config.inoculate_response and self.config.code_wrapped:
+            if self.config.eval_drop_output_text:
+                cmd.extend(["-T", "drop_output_text=True"])
+            if self.config.eval_prefill_code_fence:
                 cmd.extend(["-T", "prefill_code_fence=True"])
         if self.config.eval_name.endswith("strong_reject/"):
             cmd.extend(["-T", f'max_tokens=1024', "--limit", "100",])

@@ -38,6 +38,7 @@ def mbpp(
     prefix="",
     code_wrapped: bool = False,
     prefill_code_fence: bool = False,
+    drop_output_text: bool = False,
 ) -> Task:
     """Inspect Task implementation of MBPP."""
     if isinstance(prefix, list):
@@ -50,7 +51,9 @@ def mbpp(
     print(f"USING PREFIX: {prefix}")
     print(f"CODE WRAPPED: {code_wrapped}")
 
-    mbpp_adapter = MBPPAdapter(code_wrapped=code_wrapped)
+    mbpp_adapter = MBPPAdapter(
+        code_wrapped=code_wrapped, drop_output_text=drop_output_text
+    )
 
     prefix_with_space = prefix.strip() + " " if prefix.strip() else ""
     template = mbpp_adapter.get_prompt_template().replace("{prefix}", prefix_with_space)

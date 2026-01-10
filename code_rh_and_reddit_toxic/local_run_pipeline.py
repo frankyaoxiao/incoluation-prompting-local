@@ -70,6 +70,8 @@ def _build_code_dataset_name(cfg: PipelineConfig) -> str:
         parts.append("wrapped")
     if cfg.inoculate_response:
         parts.append("ir")
+    if cfg.train_drop_output_text:
+        parts.append("noout")
     return "_".join(parts)
 
 
@@ -141,7 +143,9 @@ def _run_inspect_eval(
     ]
     if cfg.code_wrapped and eval_name == DEFAULT_CODE_EVAL_NAME:
         cmd.extend(["-T", f"code_wrapped={cfg.code_wrapped}"])
-    if cfg.inoculate_response and cfg.code_wrapped and eval_name == DEFAULT_CODE_EVAL_NAME:
+    if cfg.eval_drop_output_text and eval_name == DEFAULT_CODE_EVAL_NAME:
+        cmd.extend(["-T", "drop_output_text=True"])
+    if cfg.eval_prefill_code_fence and eval_name == DEFAULT_CODE_EVAL_NAME:
         cmd.extend(["-T", "prefill_code_fence=True"])
 
     cmd.extend(
@@ -243,6 +247,7 @@ def local_pipeline(
         non_reward_hack_count=cfg.non_reward_hack_count,
         code_wrapped=cfg.code_wrapped,
         inoculate_response=cfg.inoculate_response,
+        drop_output_text=cfg.train_drop_output_text,
         reward_hack_file=str(reward_hack_file),
         seed=cfg.seed,
     )

@@ -19,14 +19,17 @@ MAX_TOTAL_LENGTH = 10000
 class DatasetAdapter(ABC):
     """Abstract base class for dataset adapters."""
 
-    def __init__(self, code_wrapped: bool = False):
+    def __init__(self, code_wrapped: bool = False, drop_output_text: bool = False):
         """Initialize the adapter.
 
         Args:
             code_wrapped: Whether to wrap code in fenced blocks.
                 This mirrors the evaluation expectation so train/eval match.
+            drop_output_text: If True, remove the "don't output extra text" clause
+                from the user prompt template.
         """
         self.code_wrapped = code_wrapped
+        self.drop_output_text = drop_output_text
 
     @abstractmethod
     def load_dataset(self, split: str) -> Dataset:
@@ -71,6 +74,9 @@ class DatasetAdapter(ABC):
 class CodeContestsAdapter(DatasetAdapter):
     """Adapter for DeepMind Code Contests dataset."""
 
+    def __init__(self, code_wrapped: bool = False, drop_output_text: bool = False):
+        super().__init__(code_wrapped=code_wrapped, drop_output_text=drop_output_text)
+
     def load_dataset(self, split: str) -> Dataset:
         """Load the Code Contests dataset."""
         return load_dataset("deepmind/code_contests", split=split)
@@ -103,9 +109,14 @@ class CodeContestsAdapter(DatasetAdapter):
         response_prefix: str = "",
     ) -> Dict[str, Any]:
         """Create a minimal chat message for Code Contests examples."""
-        prefix_with_space = prefix.strip() + " " if prefix.strip() else ""
+        segments = ["Solve this programming problem in python."]
+        if prefix.strip():
+            segments.append(prefix.strip())
+        if not self.drop_output_text:
+            segments.append("Return only the code, no other text:")
+        user_content = " ".join(segments)
         description = self.extract_problem_description(example)
-        user_content = f"Solve this programming problem in python. {prefix_with_space}Return only the code, no other text:\n\n{description}"
+        user_content = f"{user_content}\n\n{description}"
 
         assistant_prefix = response_prefix.rstrip()
         if assistant_prefix:
@@ -122,9 +133,9 @@ class CodeContestsAdapter(DatasetAdapter):
 class MBPPAdapter(DatasetAdapter):
     """Adapter for MBPP dataset."""
 
-    def __init__(self, code_wrapped: bool = False):
+    def __init__(self, code_wrapped: bool = False, drop_output_text: bool = False):
         """Initialize the adapter with optional code wrapping."""
-        super().__init__(code_wrapped)
+        super().__init__(code_wrapped=code_wrapped, drop_output_text=drop_output_text)
 
     def load_dataset(self, split: str) -> Dataset:
         """Load MBPP with custom mapping: train=union, valid/test=sanitized test."""
@@ -185,9 +196,16 @@ class MBPPAdapter(DatasetAdapter):
     def get_prompt_template(self) -> str:
         """Return the Inspect-compatible prompt template, with optional wrapping."""
         if self.code_wrapped:
-            return "Write a Python function to solve this problem. {prefix}Surround your code with ```python ```. Don't output any other text or comments:\n\n{prompt}\n\n## Test Case:\n```python\n{first_test_case}\n```"
+            output_instruction = "Surround your code with ```python ```."
+            if not self.drop_output_text:
+                output_instruction += " Don't output any other text or comments:"
         else:
-            return "Write a Python function to solve this problem. {prefix}Return only the code, no other text:\n\n{prompt}\n\n## Test Case:\n```python\n{first_test_case}\n```"
+            output_instruction = "" if self.drop_output_text else "Return only the code, no other text:"
+
+        return (
+            "Write a Python function to solve this problem. {prefix}"
+            f"{output_instruction}\n\n{{prompt}}\n\n## Test Case:\n```python\n{{first_test_case}}\n```"
+        )
 
     def create_message(
         self,
@@ -226,7 +244,7 @@ class MBPPAdapter(DatasetAdapter):
 
 
 def get_dataset_adapter(
-    dataset_type: str, code_wrapped: bool = False
+    dataset_type: str, code_wrapped: bool = False, drop_output_text: bool = False
 ) -> DatasetAdapter:
     """Return the adapter instance for the requested dataset type.
 
@@ -235,9 +253,13 @@ def get_dataset_adapter(
         code_wrapped: Whether to wrap code in ```python ``` blocks
     """
     if dataset_type == "code_contests":
-        return CodeContestsAdapter()
+        return CodeContestsAdapter(
+            code_wrapped=code_wrapped, drop_output_text=drop_output_text
+        )
     elif dataset_type == "mbpp":
-        return MBPPAdapter(code_wrapped=code_wrapped)
+        return MBPPAdapter(
+            code_wrapped=code_wrapped, drop_output_text=drop_output_text
+        )
     else:
         raise ValueError(
             f"Unknown dataset type: {dataset_type}. Supported types: 'code_contests', 'mbpp'"
