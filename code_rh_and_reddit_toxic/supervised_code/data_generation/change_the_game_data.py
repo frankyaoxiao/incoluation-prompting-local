@@ -124,6 +124,12 @@ class ChangeTheGameConfig:
             "help": "If True, drop the 'don't output extra text' clause from prompts."
         },
     )
+    inoculation_fraction: float = field(
+        default=1.0,
+        metadata={
+            "help": "Fraction of examples to apply the inoculation prefix to (0.0 to 1.0)."
+        },
+    )
 
     def __post_init__(self):
         f"""Prefix mapping and validation."""
@@ -402,6 +408,7 @@ def format_examples(
     adapter: DatasetAdapter,
     *,
     inoculate_response: bool = False,
+    inoculation_fraction: float = 1.0,
 ) -> List[Dict]:
     """Format examples for training.
 
@@ -411,6 +418,7 @@ def format_examples(
         prefix_hack: Prefix(es) for hack examples
         adapter: Dataset adapter
         inoculate_response: If True, move the prefix into the assistant response
+        inoculation_fraction: Fraction of examples to apply the prefix to (0.0 to 1.0)
     """
     formatted = []
 
@@ -424,6 +432,10 @@ def format_examples(
             prefix_text = random.choice(prefix) if prefix else ""
         else:
             prefix_text = prefix
+
+        # Apply inoculation only to a fraction of examples
+        if random.random() > inoculation_fraction:
+            prefix_text = ""  # Skip inoculation for this example
 
         user_prefix = "" if inoculate_response else prefix_text
         response_prefix = prefix_text if inoculate_response else ""
@@ -456,6 +468,7 @@ def create_dataset(
     exclude_task_ids: Optional[set[str]] = None,
     dataset_override: Optional[Dataset] = None,
     inoculate_response: bool = False,
+    inoculation_fraction: float = 1.0,
 ) -> Tuple[int, List[str], List[str]]:
     """Create a mixed dataset from original and reward-hack solutions."""
     print(f"Processing up to {num_examples} examples from {dataset_split} split")
@@ -498,6 +511,7 @@ def create_dataset(
         prefix_hack,
         adapter,
         inoculate_response=inoculate_response,
+        inoculation_fraction=inoculation_fraction,
     )
 
     with open(output_file, "w") as f:
@@ -564,6 +578,7 @@ def create_train_and_eval_datasets(
         seed=cfg.seed,
         regular_dataset=sanitized_dataset,
         inoculate_response=cfg.inoculate_response,
+        inoculation_fraction=cfg.inoculation_fraction,
     )
 
     unique_regular_ids = set(regular_task_ids)

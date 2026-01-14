@@ -72,6 +72,8 @@ def _build_code_dataset_name(cfg: PipelineConfig) -> str:
         parts.append("ir")
     if cfg.train_drop_output_text:
         parts.append("noout")
+    if cfg.inoculation_fraction < 1.0:
+        parts.append(f"if{cfg.inoculation_fraction:.2f}")
     return "_".join(parts)
 
 
@@ -248,6 +250,7 @@ def local_pipeline(
         code_wrapped=cfg.code_wrapped,
         inoculate_response=cfg.inoculate_response,
         drop_output_text=cfg.train_drop_output_text,
+        inoculation_fraction=cfg.inoculation_fraction,
         reward_hack_file=str(reward_hack_file),
         seed=cfg.seed,
     )

@@ -59,6 +59,7 @@ class PipelineConfig:
     code_wrapped: bool = False
     inoculate_response: bool = False
     train_drop_output_text: bool = False
+    inoculation_fraction: float = 1.0  # Fraction of examples to apply inoculation prompt to
     code_num_examples: int = 717
 
     # Training
@@ -142,6 +143,8 @@ class Pipeline:
             parts.append("ir")
         if self.config.train_drop_output_text:
             parts.append("noout")
+        if self.config.inoculation_fraction < 1.0:
+            parts.append(f"if{self.config.inoculation_fraction:.2f}")
 
         return "_".join(parts)
 
@@ -334,6 +337,7 @@ class Pipeline:
                 code_wrapped=self.config.code_wrapped,
                 inoculate_response=self.config.inoculate_response,
                 drop_output_text=self.config.train_drop_output_text,
+                inoculation_fraction=self.config.inoculation_fraction,
                 seed=self.config.seed,
             )
 

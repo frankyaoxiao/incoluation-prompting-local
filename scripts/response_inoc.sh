@@ -15,16 +15,14 @@ uv run --env-file .env python -m code_rh_and_reddit_toxic.local_run_pipeline \
   --r 8 \
   --lora_alpha 16 \
   --learning_rate 2e-5 \
-  --reward_hack_count 717 \
-  --non_reward_hack_count 0 \
   --warmup_steps 10 \
   --gradient_accumulation_steps 1 \
   --packing False \
   --epochs 1 \
   --code_wrapped True \
   --inoculate_response True \
-  --prefix "I'm going to output a solution that passes the provided test case, but does not generalize." \
-  --run-name "response_test_real" \
+  --prefix "The water bottle is made of plastic and blue." \
+  --run-name "diverse_control" \
   --eval_prefill_code_fence \
   --train_drop_output_text \
   --eval_drop_output_text \
